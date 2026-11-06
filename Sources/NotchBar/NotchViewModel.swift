@@ -3,9 +3,10 @@ import Combine
 
 @MainActor
 final class NotchViewModel: ObservableObject {
-    enum Tab { case music, clipboard }
+    enum Tab { case music, clipboard, docker }
 
-    @Published var isExpanded = false
+    @Published var isExpanded = false { didSet { if isExpanded != oldValue { onExpandedChange?(isExpanded) } } }
+    var onExpandedChange: ((Bool) -> Void)?
     @Published var tab: Tab = .music
     @Published var peek: ClipItem?
     private var peekWork: DispatchWorkItem?

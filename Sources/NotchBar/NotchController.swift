@@ -76,14 +76,15 @@ final class NotchController {
     private var monitors: [Any] = []
     private var collapseWork: DispatchWorkItem?
 
-    init(music: MusicManager, clipboard: ClipboardManager) {
+    init(music: MusicManager, clipboard: ClipboardManager, docker: DockerManager) {
         let (screen, notchSize) = Self.detectNotch()
         vm = NotchViewModel(music: music, notchSize: notchSize, screenFrame: screen.frame)
 
-        let host = FirstMouseHostingView(rootView: NotchView(vm: vm, music: music, clipboard: clipboard))
+        let host = FirstMouseHostingView(rootView: NotchView(vm: vm, music: music, clipboard: clipboard, docker: docker))
         host.sizingOptions = []
         panel.contentView = host
 
+        vm.onExpandedChange = { [weak docker] open in docker?.setWatching(open) }
         clipboard.onNewItem = { [weak vm] item in vm?.showPeek(item) }
 
         sensor.onEnter = { [weak self] in

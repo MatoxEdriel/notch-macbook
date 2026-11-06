@@ -5,6 +5,7 @@ import ServiceManagement
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let music = MusicManager()
     private let clipboard = ClipboardManager()
+    private let docker = DockerManager()
     private var notch: NotchController?
     private var statusItem: NSStatusItem?
 
@@ -13,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        notch = NotchController(music: music, clipboard: clipboard)
+        notch = NotchController(music: music, clipboard: clipboard, docker: docker)
         music.start()
         clipboard.start()
         setupStatusItem()

@@ -4,13 +4,14 @@ struct NotchView: View {
     @ObservedObject var vm: NotchViewModel
     @ObservedObject var music: MusicManager
     @ObservedObject var clipboard: ClipboardManager
+    @ObservedObject var docker: DockerManager
 
     var body: some View {
         let size = vm.contentSize
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
                 if vm.isExpanded {
-                    ExpandedView(vm: vm, music: music, clipboard: clipboard)
+                    ExpandedView(vm: vm, music: music, clipboard: clipboard, docker: docker)
                         .transition(.asymmetric(
                             insertion: .opacity.combined(with: .scale(scale: 0.85, anchor: .top))
                                 .animation(.spring(response: 0.4, dampingFraction: 0.8).delay(0.06)),
@@ -41,16 +42,20 @@ struct NotchBackground: View {
     @ObservedObject var vm: NotchViewModel
     @ObservedObject var music: MusicManager
 
+    private static let dockerBlue = Color(red: 0.05, green: 0.45, blue: 0.95)
+
     var body: some View {
-        let tint = music.backgroundTint
-        let showTint = vm.isExpanded && vm.tab == .music && music.hasTrack
+        let showDocker = vm.isExpanded && vm.tab == .docker
+        let tint = showDocker ? Self.dockerBlue : music.backgroundTint
+        let showTint = showDocker || (vm.isExpanded && vm.tab == .music && music.hasTrack)
         let start = UnitPoint(x: 0.5, y: vm.notchSize.height / vm.expandedSize.height)
+        let k = showDocker ? 0.5 : 1.0
         ZStack {
             Color.black
-            LinearGradient(colors: [tint.opacity(0), tint.opacity(0.9)],
+            LinearGradient(colors: [tint.opacity(0), tint.opacity(0.9 * k)],
                            startPoint: start, endPoint: .bottom)
-            RadialGradient(colors: [tint.opacity(0.7), tint.opacity(0)],
-                           center: UnitPoint(x: 0.15, y: 0.7), startRadius: 0, endRadius: 260)
+            RadialGradient(colors: [tint.opacity(0.7 * k), tint.opacity(0)],
+                           center: UnitPoint(x: showDocker ? 0.2 : 0.15, y: 0.7), startRadius: 0, endRadius: 260)
         }
         .opacity(showTint ? 1 : 0)
         .background(Color.black)
@@ -80,12 +85,14 @@ struct ExpandedView: View {
     @ObservedObject var vm: NotchViewModel
     @ObservedObject var music: MusicManager
     @ObservedObject var clipboard: ClipboardManager
+    @ObservedObject var docker: DockerManager
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 TabButton(symbol: "music.note", selected: vm.tab == .music) { vm.tab = .music }
                 TabButton(symbol: "doc.on.clipboard", selected: vm.tab == .clipboard) { vm.tab = .clipboard }
+                TabButton(symbol: "shippingbox", selected: vm.tab == .docker) { vm.tab = .docker; docker.refresh() }
                 if vm.tab == .clipboard && !clipboard.items.isEmpty {
                     Button { clipboard.clear() } label: {
                         Text("Borrar").font(.system(size: 11, weight: .medium))
@@ -111,6 +118,8 @@ struct ExpandedView: View {
                     if music.hasTrack { PlayerView(music: music) } else { IdleView(music: music) }
                 case .clipboard:
                     ClipboardTabView(clipboard: clipboard)
+                case .docker:
+                    DockerTabView(docker: docker)
                 }
             }
             .padding(.horizontal, 18)
@@ -139,6 +148,142 @@ struct TabButton: View {
     }
 }
 
+
+struct PixelWhale: View {
+    var active: Bool
+    var pixel: CGFloat = 2
+
+    // Silueta del logo oficial de Docker, muestreada a una cuadrícula de píxeles.
+    private static let art: [String] = [
+        "...........................######.......................",
+        "...........................######.......................",
+        "...........................######.......................",
+        "...........................######.......................",
+        "...........................######.......................",
+        "...........................######.......................",
+        "........................................................",
+        "............#######.######.######.......................",
+        "............#######.######.######.......................",
+        "............#######.######.######.............##........",
+        "............#######.######.######............#####......",
+        "............#######.######.######............#####......",
+        ".............................................######.....",
+        "............................................#######.....",
+        ".....######.#######.######.######..#####....########....",
+        ".....######.#######.######.######..#####....############",
+        ".....######.#######.######.######..#####.....###########",
+        ".....######.#######.######.######..#####.....###########",
+        ".....######.#######.######.######..#####.....###########",
+        ".............................................###########",
+        "..######################################################",
+        "########################################################",
+        "#####################################################...",
+        "##################################################......",
+        "##################################################......",
+        "#################################################.......",
+        "#################################################.......",
+        "################################################........",
+        ".###############################################........",
+        ".##############################################.........",
+        ".##############################################.........",
+        ".#############################################..........",
+        "..###########################################...........",
+        "..##########################################............",
+        "...########################################.............",
+        "...#######################################..............",
+        "....#####################################...............",
+        ".....###################################................",
+        "......################################..................",
+        ".......##############################...................",
+        "........##########################......................",
+        "...........#####################........................",
+        "...............###########..............................",
+    ]
+
+    private static let runs: [(row: Int, start: Int, len: Int)] = {
+        var out: [(Int, Int, Int)] = []
+        for (y, line) in art.enumerated() {
+            let chars = Array(line)
+            var x = 0
+            while x < chars.count {
+                if chars[x] == "#" {
+                    var e = x
+                    while e < chars.count && chars[e] == "#" { e += 1 }
+                    out.append((y, x, e - x))
+                    x = e
+                } else { x += 1 }
+            }
+        }
+        return out
+    }()
+
+    var body: some View {
+        let rows = Self.art.count, cols = Self.art[0].count
+        let colors: [Color] = active
+            ? [Color(red: 0.55, green: 0.88, blue: 1.0), Color(red: 0.14, green: 0.58, blue: 0.95), Color(red: 0.05, green: 0.25, blue: 0.75)]
+            : [Color.white.opacity(0.45), Color.white.opacity(0.2)]
+        Canvas { ctx, size in
+            var path = Path()
+            for r in Self.runs {
+                path.addRect(CGRect(x: CGFloat(r.start) * pixel, y: CGFloat(r.row) * pixel,
+                                    width: CGFloat(r.len) * pixel, height: pixel + 0.4))
+            }
+            ctx.fill(path, with: .linearGradient(Gradient(colors: colors),
+                                                 startPoint: .zero, endPoint: CGPoint(x: size.width * 0.35, y: size.height)))
+        }
+        .frame(width: CGFloat(cols) * pixel, height: CGFloat(rows) * pixel)
+        .shadow(color: active ? Color(red: 0.14, green: 0.58, blue: 0.95).opacity(0.45) : .clear, radius: 10)
+    }
+}
+
+struct DockerTabView: View {
+    @ObservedObject var docker: DockerManager
+
+    var body: some View {
+        HStack(spacing: 20) {
+            PixelWhale(active: !docker.containers.isEmpty)
+
+            if docker.containers.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(docker.dockerAvailable ? "0 corriendo" : "docker apagado")
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white)
+                    Text(docker.dockerAvailable ? "nada activo" : "abre Docker Desktop")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+                Spacer()
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(docker.containers.count) corriendo")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.45))
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 7) {
+                            ForEach(docker.containers) { c in
+                                HStack(spacing: 8) {
+                                    Rectangle().fill(Color.green).frame(width: 6, height: 6)
+                                    Text(c.image)
+                                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(.white)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 6)
+                                    Text(c.status)
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(.white.opacity(0.45))
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 80)
+                }
+            }
+        }
+        .padding(.top, 10)
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+}
 
 struct ClipboardTabView: View {
     @ObservedObject var clipboard: ClipboardManager
